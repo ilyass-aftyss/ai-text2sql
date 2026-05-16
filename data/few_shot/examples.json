@@ -1,0 +1,127 @@
+[
+  {
+    "question": "Combien y a-t-il de clients au total ?",
+    "sql": "SELECT COUNT(*) AS nombre_clients FROM clients;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quels sont les 10 produits les plus vendus ?",
+    "sql": "SELECT p.nom, SUM(l.quantite) AS total_vendu FROM produits p JOIN lignes_commande l ON p.id = l.produit_id GROUP BY p.id, p.nom ORDER BY total_vendu DESC LIMIT 10;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quel est le chiffre d'affaires total du mois dernier ?",
+    "sql": "SELECT SUM(montant_total) AS ca_mensuel FROM commandes WHERE DATE_TRUNC('month', date_commande) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month');",
+    "domain": "finance"
+  },
+  {
+    "question": "Quels clients n'ont pas passé de commande depuis 6 mois ?",
+    "sql": "SELECT c.id, c.nom, c.email FROM clients c WHERE c.id NOT IN (SELECT DISTINCT client_id FROM commandes WHERE date_commande >= CURRENT_DATE - INTERVAL '6 months');",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quelle est la moyenne des ventes par commercial ?",
+    "sql": "SELECT commercial_id, AVG(montant_total) AS moyenne_ventes, COUNT(*) AS nombre_commandes FROM commandes GROUP BY commercial_id ORDER BY moyenne_ventes DESC;",
+    "domain": "ventes"
+  },
+  {
+    "question": "Quels sont les employés qui ont un salaire supérieur à la moyenne ?",
+    "sql": "SELECT nom, prenom, salaire FROM employes WHERE salaire > (SELECT AVG(salaire) FROM employes) ORDER BY salaire DESC;",
+    "domain": "rh"
+  },
+  {
+    "question": "Combien de commandes ont été passées par jour cette semaine ?",
+    "sql": "SELECT DATE(date_commande) AS jour, COUNT(*) AS nombre_commandes FROM commandes WHERE date_commande >= CURRENT_DATE - INTERVAL '7 days' GROUP BY DATE(date_commande) ORDER BY jour;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quels produits sont en rupture de stock ?",
+    "sql": "SELECT nom, reference, stock_actuel FROM produits WHERE stock_actuel = 0 ORDER BY nom;",
+    "domain": "stock"
+  },
+  {
+    "question": "Quel est le pays avec le plus de clients ?",
+    "sql": "SELECT pays, COUNT(*) AS nombre_clients FROM clients GROUP BY pays ORDER BY nombre_clients DESC LIMIT 1;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Listez les commandes en attente avec leur client associé",
+    "sql": "SELECT c.id AS commande_id, c.date_commande, cl.nom AS client, cl.email FROM commandes c JOIN clients cl ON c.client_id = cl.id WHERE c.statut = 'en_attente' ORDER BY c.date_commande;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quel est le montant total des factures impayées ?",
+    "sql": "SELECT SUM(montant) AS total_impaye, COUNT(*) AS nombre_factures FROM factures WHERE statut = 'impayee';",
+    "domain": "finance"
+  },
+  {
+    "question": "Quelle est la répartition des employés par département ?",
+    "sql": "SELECT d.nom AS departement, COUNT(e.id) AS effectif FROM departements d LEFT JOIN employes e ON d.id = e.departement_id GROUP BY d.id, d.nom ORDER BY effectif DESC;",
+    "domain": "rh"
+  },
+  {
+    "question": "Quels sont les 5 clients qui ont dépensé le plus ?",
+    "sql": "SELECT c.nom, c.email, SUM(co.montant_total) AS total_depense FROM clients c JOIN commandes co ON c.id = co.client_id GROUP BY c.id, c.nom, c.email ORDER BY total_depense DESC LIMIT 5;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Quel est le taux de conversion des prospects en clients ?",
+    "sql": "SELECT ROUND(COUNT(CASE WHEN statut = 'client' THEN 1 END) * 100.0 / COUNT(*), 2) AS taux_conversion FROM contacts;",
+    "domain": "crm"
+  },
+  {
+    "question": "Liste des produits avec leur catégorie et fournisseur",
+    "sql": "SELECT p.nom AS produit, c.nom AS categorie, f.nom AS fournisseur, p.prix_unitaire FROM produits p JOIN categories c ON p.categorie_id = c.id JOIN fournisseurs f ON p.fournisseur_id = f.id ORDER BY c.nom, p.nom;",
+    "domain": "stock"
+  },
+  {
+    "question": "Combien d'utilisateurs se sont inscrits par mois cette année ?",
+    "sql": "SELECT TO_CHAR(date_inscription, 'YYYY-MM') AS mois, COUNT(*) AS nouveaux_utilisateurs FROM utilisateurs WHERE EXTRACT(YEAR FROM date_inscription) = EXTRACT(YEAR FROM CURRENT_DATE) GROUP BY mois ORDER BY mois;",
+    "domain": "analytics"
+  },
+  {
+    "question": "Quel est le délai moyen de livraison en jours ?",
+    "sql": "SELECT AVG(EXTRACT(DAY FROM (date_livraison - date_commande))) AS delai_moyen_jours FROM commandes WHERE date_livraison IS NOT NULL;",
+    "domain": "logistique"
+  },
+  {
+    "question": "Quels sont les articles les moins vendus ce trimestre ?",
+    "sql": "SELECT p.nom, COALESCE(SUM(l.quantite), 0) AS quantite_vendue FROM produits p LEFT JOIN lignes_commande l ON p.id = l.produit_id LEFT JOIN commandes c ON l.commande_id = c.id AND c.date_commande >= DATE_TRUNC('quarter', CURRENT_DATE) GROUP BY p.id, p.nom ORDER BY quantite_vendue ASC LIMIT 10;",
+    "domain": "commerce"
+  },
+  {
+    "question": "Show me all active users",
+    "sql": "SELECT id, username, email, created_at FROM users WHERE is_active = true ORDER BY created_at DESC;",
+    "domain": "analytics"
+  },
+  {
+    "question": "What is the total revenue by category?",
+    "sql": "SELECT c.name AS category, SUM(oi.quantity * oi.unit_price) AS total_revenue FROM order_items oi JOIN products p ON oi.product_id = p.id JOIN categories c ON p.category_id = c.id GROUP BY c.id, c.name ORDER BY total_revenue DESC;",
+    "domain": "analytics"
+  },
+  {
+    "question": "How many orders were placed in the last 30 days?",
+    "sql": "SELECT COUNT(*) AS order_count FROM orders WHERE created_at >= CURRENT_DATE - INTERVAL '30 days';",
+    "domain": "analytics"
+  },
+  {
+    "question": "Which products have never been ordered?",
+    "sql": "SELECT p.id, p.name, p.price FROM products p WHERE p.id NOT IN (SELECT DISTINCT product_id FROM order_items);",
+    "domain": "commerce"
+  },
+  {
+    "question": "What is the average order value per customer?",
+    "sql": "SELECT customer_id, AVG(total_amount) AS avg_order_value, COUNT(*) AS total_orders FROM orders GROUP BY customer_id ORDER BY avg_order_value DESC;",
+    "domain": "analytics"
+  },
+  {
+    "question": "List all employees hired in the last year with their manager",
+    "sql": "SELECT e.first_name, e.last_name, e.hire_date, m.first_name AS manager_first, m.last_name AS manager_last FROM employees e LEFT JOIN employees m ON e.manager_id = m.id WHERE e.hire_date >= CURRENT_DATE - INTERVAL '1 year' ORDER BY e.hire_date DESC;",
+    "domain": "rh"
+  },
+  {
+    "question": "Quelle est l'évolution mensuelle du chiffre d'affaires sur les 12 derniers mois ?",
+    "sql": "SELECT TO_CHAR(date_commande, 'YYYY-MM') AS mois, SUM(montant_total) AS ca, COUNT(*) AS nb_commandes FROM commandes WHERE date_commande >= CURRENT_DATE - INTERVAL '12 months' GROUP BY mois ORDER BY mois;",
+    "domain": "finance"
+  }
+]

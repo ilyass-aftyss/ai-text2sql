@@ -1,0 +1,97 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: text2sql_postgres
+    environment:
+      POSTGRES_USER: text2sql
+      POSTGRES_PASSWORD: text2sql_secret
+      POSTGRES_DB: text2sql_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U text2sql -d text2sql_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Ollama (LLM local Llama 3.1) ────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: text2sql_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ── Streamlit ────────────────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: text2sql_streamlit
+    command: >
+      streamlit run app/main.py
+      --server.port=8501
+      --server.address=0.0.0.0
+      --server.headless=true
+      --browser.gatherUsageStats=false
+    ports:
+      - "8501:8501"
+    env_file: .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_URL=postgresql://text2sql:text2sql_secret@postgres:5432/text2sql_db
+    volumes:
+      - .:/app
+      - chroma_data:/app/data/chroma_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── FastAPI ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: text2sql_api
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DATABASE_URL=postgresql://text2sql:text2sql_secret@postgres:5432/text2sql_db
+    volumes:
+      - .:/app
+      - chroma_data:/app/data/chroma_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ollama_data:
+  chroma_data:
