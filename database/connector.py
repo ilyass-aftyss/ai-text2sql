@@ -5,7 +5,9 @@ Support PostgreSQL, MySQL et SQLite.
 
 from __future__ import annotations
 
+import base64
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,13 +178,16 @@ class DatabaseConnector:
             return str(path)
 
         if self._ssl_config.ca_cert_content:
-            if "BEGIN CERTIFICATE" not in self._ssl_config.ca_cert_content:
+            pem_content = self._normalise_pem(self._ssl_config.ca_cert_content)
+            if "BEGIN CERTIFICATE" not in pem_content:
                 raise ValueError("Le certificat CA doit être au format PEM.")
             if self._temporary_ca_path is None:
                 fd, path = tempfile.mkstemp(prefix="text2sql-ca-", suffix=".pem")
                 try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as cert_file:
-                        cert_file.write(self._ssl_config.ca_cert_content)
+                    # newline="\n" prevents Python on Windows from converting
+                    # LF to CRLF, which libpq can reject as "bad end line".
+                    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as cert_file:
+                        cert_file.write(pem_content)
                     os.chmod(path, 0o600)
                 except Exception:
                     try:
@@ -198,6 +203,49 @@ class DatabaseConnector:
             return self._temporary_ca_path
 
         return None
+
+    @staticmethod
+    def _normalise_pem(content: str) -> str:
+        """Normalise un certificat PEM collé depuis Windows, navigateur ou JSON."""
+        normalised = content.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+        # Also accept a PEM copied from a JSON/env representation containing literal
+        # ``\n`` sequences instead of actual line breaks.
+        if "\\n" in normalised and "\n" not in normalised:
+            normalised = normalised.replace("\\n", "\n")
+
+        # Keep only complete certificate blocks. This tolerates surrounding quotes,
+        # Markdown fences, labels, and whitespace copied from a provider dashboard.
+        blocks = re.findall(
+            r"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----",
+            normalised,
+            flags=re.DOTALL,
+        )
+        if not blocks:
+            return normalised.strip() + "\n"
+
+        canonical_blocks: list[str] = []
+        for body in blocks:
+            # Remove whitespace and invisible/non-ASCII copy/paste characters,
+            # then let the Base64 decoder validate the actual certificate body.
+            encoded_body = re.sub(r"[^A-Za-z0-9+/=]", "", body)
+            try:
+                decoded_body = base64.b64decode(encoded_body, validate=True)
+            except (ValueError, base64.binascii.Error) as exc:
+                raise ValueError(
+                    "Le contenu entre BEGIN CERTIFICATE et END CERTIFICATE "
+                    "n'est pas un certificat PEM Base64 valide. "
+                    "Recopiez le certificat CA original sans texte supplémentaire."
+                ) from exc
+            encoded_body = base64.b64encode(decoded_body).decode("ascii")
+            wrapped_body = "\n".join(
+                encoded_body[index : index + 64] for index in range(0, len(encoded_body), 64)
+            )
+            canonical_blocks.append(
+                "-----BEGIN CERTIFICATE-----\n"
+                f"{wrapped_body}\n"
+                "-----END CERTIFICATE-----"
+            )
+        return "\n".join(canonical_blocks) + "\n"
 
     def _remove_temporary_ca(self) -> None:
         """Supprime le fichier CA temporaire créé depuis un contenu PEM."""

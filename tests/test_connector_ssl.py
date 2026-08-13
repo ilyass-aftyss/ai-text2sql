@@ -80,7 +80,7 @@ def test_pem_content_is_written_to_private_temporary_file(
         "postgresql://user:password@db.example.com:5432/app",
         ssl_config=DatabaseSSLConfig(
             enabled=True,
-            ca_cert_content="-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n",
+            ca_cert_content="\ufeff-----BEGIN CERTIFICATE-----\r\nCA\r\n-----END CERTIFICATE-----",
         ),
     )
 
@@ -89,6 +89,9 @@ def test_pem_content_is_written_to_private_temporary_file(
 
     assert temporary_path.is_file()
     assert temporary_path.stat().st_mode & 0o777 == 0o600
+    assert temporary_path.read_bytes() == (
+        b"-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n"
+    )
 
     connector.disconnect()
 

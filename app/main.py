@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from sqlalchemy.engine import URL
 
 from app.config import settings
 from app.utils import dataframe_to_csv, detect_chart_type, sanitize_user_input
@@ -234,6 +235,25 @@ def connect_database(
         return False
 
 
+def build_database_url(
+    driver: str,
+    host: str,
+    port: int,
+    database: str,
+    username: str,
+    password: str,
+) -> str:
+    """Construit une URI SQLAlchemy en encodant correctement les identifiants."""
+    return URL.create(
+        drivername=driver,
+        username=username,
+        password=password,
+        host=host,
+        port=port,
+        database=database,
+    ).render_as_string(hide_password=False)
+
+
 def run_pipeline(question: str) -> None:
     """Lance le pipeline complet Text-to-SQL."""
     generator: SQLGenerator = st.session_state.generator
@@ -425,13 +445,63 @@ with st.sidebar:
 
     # Connexion BDD
     st.markdown("### 🗄️ Base de données")
-    db_url = st.text_input(
-        "URI de connexion",
-        value=st.session_state.get("db_url", ""),
-        type="password",
-        placeholder="postgresql://user:pass@localhost:5432/db",
-        help="Format : postgresql://user:password@host:port/dbname",
+    connection_mode = st.radio(
+        "Mode de connexion",
+        options=["Champs séparés", "URI SQLAlchemy (avancé)"],
+        horizontal=True,
+        help="Le mode Champs séparés correspond aux écrans de configuration comme DBeaver.",
     )
+    db_url = ""
+
+    if connection_mode == "Champs séparés":
+        db_driver = st.selectbox(
+            "Pilote",
+            options=["postgresql+psycopg2", "mysql+pymysql"],
+            format_func=lambda value: "PostgreSQL" if value.startswith("postgresql") else "MySQL",
+        )
+        db_host = st.text_input(
+            "Serveur / Host",
+            value=st.session_state.get("db_host", ""),
+            placeholder="wlzpg-7-26-woooolizpg1.d.aivencloud.com",
+        )
+        db_port = st.number_input(
+            "Port",
+            min_value=1,
+            max_value=65535,
+            value=int(st.session_state.get("db_port", 5432)),
+            step=1,
+        )
+        db_name = st.text_input(
+            "Base de données",
+            value=st.session_state.get("db_name", ""),
+            placeholder="woliz_main_dev",
+        )
+        db_username = st.text_input(
+            "Nom d'utilisateur",
+            value=st.session_state.get("db_username", ""),
+            placeholder="analytics_dev",
+        )
+        db_password = st.text_input(
+            "Mot de passe",
+            type="password",
+            value="",
+            help="Le mot de passe reste dans le champ password et est encodé automatiquement.",
+        )
+    else:
+        db_url = st.text_input(
+            "URI de connexion",
+            value=st.session_state.get("db_url", ""),
+            type="password",
+            placeholder="postgresql://user:pass@localhost:5432/db",
+            help="Format : postgresql://user:password@host:port/dbname",
+        )
+        db_driver = ""
+        db_host = ""
+        db_port = 5432
+        db_name = ""
+        db_username = ""
+        db_password = ""
+
     ssl_enabled = st.checkbox(
         "🔒 SSL/TLS obligatoire",
         value=st.session_state.ssl_enabled,
@@ -461,6 +531,18 @@ with st.sidebar:
         disabled=not ssl_enabled,
         help="Le fichier est conservé uniquement en mémoire de session et jamais affiché dans les logs.",
     )
+    ssl_ca_cert_text = st.text_area(
+        "Ou coller le certificat CA (PEM)",
+        value="",
+        disabled=not ssl_enabled,
+        height=140,
+        placeholder=(
+            "-----BEGIN CERTIFICATE-----\n"
+            "... contenu du certificat ...\n"
+            "-----END CERTIFICATE-----"
+        ),
+        help="Collez le certificat complet, y compris les lignes BEGIN et END.",
+    )
     ssl_verify_identity = st.checkbox(
         "Vérifier l'identité du serveur MySQL",
         value=st.session_state.ssl_verify_identity,
@@ -470,11 +552,27 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔌 Connecter", type="primary", use_container_width=True):
-            if db_url:
+            if connection_mode == "Champs séparés":
+                if not all([db_host, db_name, db_username, db_password]):
+                    st.warning("Remplissez le serveur, la base, l'utilisateur et le mot de passe.")
+                else:
+                    db_url = build_database_url(
+                        driver=db_driver,
+                        host=db_host,
+                        port=int(db_port),
+                        database=db_name,
+                        username=db_username,
+                        password=db_password,
+                    )
+
+            if not db_url:
+                if connection_mode == "URI SQLAlchemy (avancé)":
+                    st.warning("Entrez une URI valide.")
+            else:
                 ca_content = (
                     ssl_ca_cert_file.getvalue().decode("utf-8")
                     if ssl_ca_cert_file
-                    else None
+                    else ssl_ca_cert_text.strip() or None
                 )
                 ssl_config = DatabaseSSLConfig(
                     enabled=ssl_enabled,
@@ -488,8 +586,6 @@ with st.sidebar:
                 if success:
                     st.success("✅ Connecté!")
                     st.rerun()
-            else:
-                st.warning("Entrez une URI valide")
 
     with col2:
         if st.button("Demo SQLite", use_container_width=True):
