@@ -27,6 +27,26 @@ class Settings(BaseSettings):
         default="sqlite:///./demo.sqlite",
         description="URI de connexion SQLAlchemy",
     )
+    database_ssl_enabled: bool = Field(
+        default=False,
+        description="Active TLS pour la connexion à la base de données",
+    )
+    database_ssl_mode: str = Field(
+        default="verify-full",
+        description="Mode SSL PostgreSQL (require, verify-ca ou verify-full)",
+    )
+    database_ssl_ca_cert_path: str | None = Field(
+        default=None,
+        description="Chemin vers le certificat CA PEM de la base de données",
+    )
+    database_ssl_ca_cert_content: str | None = Field(
+        default=None,
+        description="Contenu PEM du certificat CA (à utiliser via un secret)",
+    )
+    database_ssl_verify_identity: bool = Field(
+        default=True,
+        description="Vérifie le nom d'hôte pour les connexions MySQL TLS",
+    )
 
     # --- LLM (Ollama) ---
     ollama_base_url: str = Field(default="http://localhost:11434")

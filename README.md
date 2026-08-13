@@ -150,10 +150,36 @@ DATABASE_URL=postgresql://text2sql:votre_mot_de_passe@localhost:5432/text2sql_db
 # OU SQLite (démo, aucune config requise)
 # DATABASE_URL=sqlite:///./data/demo.sqlite
 
+# SSL/TLS avec certificat CA (PostgreSQL ou MySQL)
+# DATABASE_SSL_ENABLED=true
+# DATABASE_SSL_MODE=verify-full
+# DATABASE_SSL_CA_CERT_PATH=/chemin/vers/ca.pem
+# Pour un certificat fourni par un secret, utilisez plutôt :
+# DATABASE_SSL_CA_CERT_CONTENT=-----BEGIN CERTIFICATE-----...
+
 # Ollama (laisser les valeurs par défaut si Ollama tourne en local)
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1
 ```
+
+Depuis l'interface Streamlit, activez **SSL/TLS obligatoire**, puis indiquez
+le chemin du fichier CA ou importez directement un fichier `.pem`, `.crt` ou
+`.cer`. Le fichier importé reste en mémoire de session et est converti en
+fichier temporaire privé uniquement pendant la connexion.
+
+L'API accepte les mêmes options sur `POST /connect` :
+
+```json
+{
+  "database_url": "postgresql+psycopg2://user:password@db.example.com:5432/app",
+  "ssl_enabled": true,
+  "ssl_mode": "verify-full",
+  "ssl_ca_cert_path": "/run/secrets/database-ca.pem"
+}
+```
+
+Pour MySQL avec `mysql+pymysql://`, le certificat CA est transmis au pilote
+PyMySQL et la vérification du nom d'hôte est activée par défaut.
 
 ---
 

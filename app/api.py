@@ -24,7 +24,7 @@ from core.memory import ConversationMemory
 from core.schema_retriever import SchemaRetriever
 from core.sql_generator import SQLGenerator
 from core.sql_validator import SQLValidator
-from database.connector import DatabaseConnector
+from database.connector import DatabaseConnector, DatabaseSSLConfig
 from database.executor import SafeExecutor
 from database.schema_extractor import SchemaExtractor
 from vectorstore.indexer import VectorStoreIndexer
@@ -50,6 +50,23 @@ class QueryResponse(BaseModel):
 
 class ConnectRequest(BaseModel):
     database_url: str = Field(..., description="URI de connexion SQLAlchemy")
+    ssl_enabled: bool = Field(default=False, description="Active SSL/TLS")
+    ssl_mode: str = Field(
+        default="verify-full",
+        description="Mode PostgreSQL : require, verify-ca ou verify-full",
+    )
+    ssl_ca_cert_path: str | None = Field(
+        default=None,
+        description="Chemin du certificat CA PEM accessible par le serveur",
+    )
+    ssl_ca_cert_content: str | None = Field(
+        default=None,
+        description="Certificat CA au format PEM (non journalisé)",
+    )
+    ssl_verify_identity: bool = Field(
+        default=True,
+        description="Vérifie l'identité du serveur MySQL",
+    )
 
 
 class HealthResponse(BaseModel):
@@ -117,7 +134,16 @@ async def health() -> HealthResponse:
 async def connect(request: ConnectRequest) -> dict[str, str]:
     """Connecte la base de données et indexe son schéma."""
     try:
-        connector = DatabaseConnector(request.database_url)
+        connector = DatabaseConnector(
+            request.database_url,
+            ssl_config=DatabaseSSLConfig(
+                enabled=request.ssl_enabled,
+                mode=request.ssl_mode,
+                ca_cert_path=request.ssl_ca_cert_path,
+                ca_cert_content=request.ssl_ca_cert_content,
+                verify_identity=request.ssl_verify_identity,
+            ),
+        )
         ok, msg = connector.test_connection()
         if not ok:
             raise HTTPException(status_code=400, detail=msg)

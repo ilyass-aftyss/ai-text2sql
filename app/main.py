@@ -26,7 +26,7 @@ from core.memory import ConversationMemory
 from core.schema_retriever import SchemaRetriever
 from core.sql_generator import SQLGenerator
 from core.sql_validator import SQLValidator
-from database.connector import DatabaseConnector
+from database.connector import DatabaseConnector, DatabaseSSLConfig
 from database.executor import SafeExecutor
 from database.schema_extractor import SchemaExtractor
 from vectorstore.indexer import VectorStoreIndexer
@@ -143,6 +143,11 @@ def init_session_state() -> None:
     defaults: dict = {
         "connected": False,
         "db_url": "",
+        "ssl_enabled": settings.database_ssl_enabled,
+        "ssl_mode": settings.database_ssl_mode,
+        "ssl_ca_cert_path": settings.database_ssl_ca_cert_path or "",
+        "ssl_ca_cert_content": None,
+        "ssl_verify_identity": settings.database_ssl_verify_identity,
         "connector": None,
         "indexer": None,
         "generator": None,
@@ -175,10 +180,13 @@ def get_indexer() -> VectorStoreIndexer:
     return indexer
 
 
-def connect_database(db_url: str) -> bool:
+def connect_database(
+    db_url: str,
+    ssl_config: DatabaseSSLConfig | None = None,
+) -> bool:
     """Connecte la base de données et indexe le schéma."""
     try:
-        connector = DatabaseConnector(db_url)
+        connector = DatabaseConnector(db_url, ssl_config=ssl_config)
         ok, msg = connector.test_connection()
         if not ok:
             st.error(f"❌ {msg}")
@@ -211,6 +219,13 @@ def connect_database(db_url: str) -> bool:
         st.session_state.schema_indexed = True
         st.session_state.connected = True
         st.session_state.db_url = db_url
+        st.session_state.ssl_enabled = ssl_config.enabled if ssl_config else False
+        st.session_state.ssl_mode = ssl_config.mode if ssl_config else settings.database_ssl_mode
+        st.session_state.ssl_ca_cert_path = ssl_config.ca_cert_path if ssl_config else ""
+        st.session_state.ssl_ca_cert_content = None
+        st.session_state.ssl_verify_identity = (
+            ssl_config.verify_identity if ssl_config else settings.database_ssl_verify_identity
+        )
 
         return True
 
@@ -417,13 +432,59 @@ with st.sidebar:
         placeholder="postgresql://user:pass@localhost:5432/db",
         help="Format : postgresql://user:password@host:port/dbname",
     )
+    ssl_enabled = st.checkbox(
+        "🔒 SSL/TLS obligatoire",
+        value=st.session_state.ssl_enabled,
+        help="Utilise un certificat CA pour chiffrer et vérifier la connexion.",
+    )
+    ssl_mode = st.selectbox(
+        "Mode SSL PostgreSQL",
+        options=["verify-full", "verify-ca", "require"],
+        index=["verify-full", "verify-ca", "require"].index(
+            st.session_state.ssl_mode
+            if st.session_state.ssl_mode in {"verify-full", "verify-ca", "require"}
+            else "verify-full"
+        ),
+        disabled=not ssl_enabled,
+        help="verify-full vérifie aussi que le nom d'hôte correspond au certificat.",
+    )
+    ssl_ca_cert_path = st.text_input(
+        "Chemin du certificat CA (optionnel)",
+        value=st.session_state.ssl_ca_cert_path,
+        disabled=not ssl_enabled,
+        placeholder="/chemin/vers/ca.pem",
+        help="Chemin accessible par le processus Streamlit. Utilisez l'import ci-dessous pour envoyer un fichier.",
+    )
+    ssl_ca_cert_file = st.file_uploader(
+        "Ou importer le certificat CA",
+        type=["pem", "crt", "cer"],
+        disabled=not ssl_enabled,
+        help="Le fichier est conservé uniquement en mémoire de session et jamais affiché dans les logs.",
+    )
+    ssl_verify_identity = st.checkbox(
+        "Vérifier l'identité du serveur MySQL",
+        value=st.session_state.ssl_verify_identity,
+        disabled=not ssl_enabled,
+    )
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔌 Connecter", type="primary", use_container_width=True):
             if db_url:
+                ca_content = (
+                    ssl_ca_cert_file.getvalue().decode("utf-8")
+                    if ssl_ca_cert_file
+                    else None
+                )
+                ssl_config = DatabaseSSLConfig(
+                    enabled=ssl_enabled,
+                    mode=ssl_mode,
+                    ca_cert_path=ssl_ca_cert_path or None,
+                    ca_cert_content=ca_content,
+                    verify_identity=ssl_verify_identity,
+                )
                 with st.spinner("Connexion..."):
-                    success = connect_database(db_url)
+                    success = connect_database(db_url, ssl_config=ssl_config)
                 if success:
                     st.success("✅ Connecté!")
                     st.rerun()
