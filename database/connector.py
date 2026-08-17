@@ -5,7 +5,6 @@ Support PostgreSQL, MySQL et SQLite.
 
 from __future__ import annotations
 
-import base64
 import os
 import re
 import tempfile
@@ -225,18 +224,7 @@ class DatabaseConnector:
 
         canonical_blocks: list[str] = []
         for body in blocks:
-            # Remove whitespace and invisible/non-ASCII copy/paste characters,
-            # then let the Base64 decoder validate the actual certificate body.
-            encoded_body = re.sub(r"[^A-Za-z0-9+/=]", "", body)
-            try:
-                decoded_body = base64.b64decode(encoded_body, validate=True)
-            except (ValueError, base64.binascii.Error) as exc:
-                raise ValueError(
-                    "Le contenu entre BEGIN CERTIFICATE et END CERTIFICATE "
-                    "n'est pas un certificat PEM Base64 valide. "
-                    "Recopiez le certificat CA original sans texte supplémentaire."
-                ) from exc
-            encoded_body = base64.b64encode(decoded_body).decode("ascii")
+            encoded_body = re.sub(r"\s+", "", body)
             wrapped_body = "\n".join(
                 encoded_body[index : index + 64] for index in range(0, len(encoded_body), 64)
             )
